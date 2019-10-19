@@ -5,11 +5,11 @@ RUN sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g;s/security.ubuntu.com/mirr
 RUN apt-get update
 
 # 修改pip源
-RUN mkdir ~/.pip \
-    && printf '%s\n%s\n%s\n' '[global]' 'trusted-host = mirrors.aliyun.com' \
-    'index-url = https://mirrors.aliyun.com/pypi/simple'>> ~/.pip/pip.conf
+RUN pip install pip -U
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 # 配置python环境
 RUN echo "export PATH=/opt/conda/bin:$PATH" > /etc/environment
-ADD requirements.txt .
+RUN pip install Cython==0.29.7
+ADD docker/requirements.txt .
 RUN pip install -r requirements.txt
