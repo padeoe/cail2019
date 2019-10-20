@@ -97,6 +97,6 @@ traitlets==4.3.2
 urllib3==1.24.3
 wcwidth==0.1.7
 webencodings==0.5.1
-Werkzeug==0.15.2
+Werkzeug==0.15.3
 # wheel==0.33.3
 xgboost==0.82
