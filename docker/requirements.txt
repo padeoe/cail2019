@@ -48,7 +48,7 @@ MarkupSafe==1.1.1
 matplotlib==3.0.3
 memory-profiler==0.55.0
 mock==3.0.5
-nltk==3.2.1
+nltk==3.4.5
 numpy==1.16.3
 pandas==0.24.2
 pexpect==4.2.1
