@@ -1,4 +1,4 @@
-FROM cail:base
+FROM padeoe/cail:base
 
 # install zip
 RUN apt-get -y install zip
@@ -38,9 +38,12 @@ COPY judger.py .
 # script for running test and compressing files
 COPY docker/submit/submit.sh .
 RUN chmod a+x submit.sh
+
 # ground truth and test samples
-COPY data/test/ground_truth.txt /data/ground_truth.txt
-COPY data/test/input.txt /input/input.txt
+COPY data.py .
+RUN python data.py
+RUN mkdir /data; mv data/test/ground_truth.txt /data/ground_truth.txt
+RUN mkdir /input; mv data/test/input.txt /input/input.txt
 
 # run test and zip files for submmit
 ENTRYPOINT ["/docker-entrypoint.sh"]
