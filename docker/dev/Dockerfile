@@ -25,7 +25,7 @@ RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 RUN dpkg-reconfigure --frontend noninteractive tzdata
 
 # 配置python环境
-RUN echo "export PATH=/opt/conda/bin:$PATH" > /etc/environment
+RUN pip install pip -U
 RUN pip install prompt-toolkit jupyter
 #RUN mkdir -p ~/.jupyter/custom && \
 #    echo ".CodeMirror pre, .CodeMirror-dialog, .CodeMirror-dialog .CodeMirror-search-field, .terminal-app .terminal {\n \tfont-family: Consolas;\n \tfont-size: 12pt;\n}" > ~/.jupyter/custom/custom.css
