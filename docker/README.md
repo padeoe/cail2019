@@ -1,12 +1,22 @@
 # 开发环境搭建
 
-## build base image
+## Get `base` image
+The base image is the parent image of dev image and submit image.
+
+pull image from dockerhub
+```bash
+docker pull padeoe/cail:base
+```
+or build it by yourself
 ```bash
 docker build -t cail:base -f docker/base/Dockerfile .
 ```
 
-## build dev env
-**1.build image**
+## Set up development environment
+This will help you build a simulation environment that is consistent with the online system  of the competitionand, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.
+
+**1.get `dev` image**
+
 pull image from dockerhub
 ```bash
 docker pull padeoe/cail:dev
@@ -17,6 +27,7 @@ docker build -t cail:dev -f docker/dev/Dockerfile .
 ```
 
 **2.run container**
+
 ```bash
 BERT_PRETRAINED_MODEL_DIR="/data/resources/bert"
 $SSH_PORT=2229
@@ -33,12 +44,15 @@ docker run \
     padeoe/cail:dev
 ```
 
-now we can access ssh at localhost:2229 and jupyter notebook at [http://localhost:2230](http://localhost:2230).
+Now we can access ssh at `ssh -p 2229 root@localhost` and jupyter notebook at [http://localhost:2230](http://localhost:2230).
 
 The ssh password is cail by default, you can change it in [Dockerfile](docker/dev/Dockerfile)
 
-## build submit image
-**1.build image**
+## Test and submission
+This container will test your model and compress the codes into zip format required by the organizer.
+
+**1.get `submit` image**
+
 pull image from dockerhub
 ```bash
 docker pull padeoe/cail:submit
@@ -49,6 +63,7 @@ docker build -t cail:submit -f docker/submit/Dockerfile .
 ```
 
 **2.run test and zip codes**
+
 ```bash
 docker run \
     --rm \
@@ -63,8 +78,11 @@ docker run \
 It will execute `main.py` and `judger.py` and output the the accuracy of evaluation.
 Finally, the compressed codes and models for submit will stored in `$PWD/data/submit_zip`.
 
-## train models
-**1.build image**
+## Train models
+This container will perform model training and output model files.
+
+**1.get `train` image**
+
 pull image from dockerhub
 ```bash
 docker pull padeoe/cail:train
@@ -92,6 +110,7 @@ data/
 ```
 
 **3.train models**
+
 ```bash
 BERT_PRETRAINED_MODEL="/data/resources/bert/pytorch_chinese_L-12_H-768_A-12/"
 OUTPUT_MODELS_DIR="$PWD/model"
