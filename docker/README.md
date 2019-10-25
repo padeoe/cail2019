@@ -13,7 +13,7 @@ docker build -t cail:base -f docker/base/Dockerfile .
 ```
 
 ## Set up development environment
-This will help you build a simulation environment that is consistent with the online system  of the competitionand, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.
+This will help you build a simulation environment that is consistent with the online system  of the competition, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.
 
 **1.get `dev` image**
 
@@ -30,8 +30,8 @@ docker build -t cail:dev -f docker/dev/Dockerfile .
 
 ```bash
 BERT_PRETRAINED_MODEL_DIR="/data/resources/bert"
-$SSH_PORT=2229
-$JUPYTER_PORT=2230
+SSH_PORT=2229
+JUPYTER_PORT=2230
 docker run \
     --name cail_dev \
     --restart always \
