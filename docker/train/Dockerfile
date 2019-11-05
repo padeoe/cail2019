@@ -23,6 +23,7 @@ RUN echo "export PATH=/opt/conda/bin:$PATH" > /etc/environment
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex && \
     cd apex && \
+    git checkout 78c38db467c378759b4278a4ca8547763da5c91d && \
     pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" .
 
 WORKDIR /cail

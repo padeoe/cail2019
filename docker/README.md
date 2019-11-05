@@ -36,8 +36,7 @@ docker run \
     --name cail_dev \
     --restart always \
     --runtime nvidia \
-    -v BERT_PRETRAINED_MODEL_DIR:/bert \
-    -v /data/padeoe/project/cail:/cail \
+    -v $BERT_PRETRAINED_MODEL_DIR:/bert \
     -p $SSH_PORT:22 \
     -p $JUPYTER_PORT:8888 \
     -d \

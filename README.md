@@ -79,7 +79,16 @@
 - PyTorch 1.1.0+
 - [requirements.txt](requirements.txt)
 - Windows 和 Linux 均可
-- Nvidia Apex：可选，用于混合精度训练，安装参见[https://github.com/NVIDIA/apex#quick-start](https://github.com/NVIDIA/apex#quick-start)，将代码中 `fp16 = True` 修改为 `fp16 = False` 可不依赖 Apex。使用 apex 可以降低显存消耗并提速。
+- Nvidia Apex：可选，用于混合精度训练，将代码中 `fp16 = True` 修改为 `fp16 = False` 可不依赖 Apex。使用 apex 可以降低显存消耗并提速。
+
+*Apex 安装*参见[https://github.com/NVIDIA/apex#quick-start](https://github.com/NVIDIA/apex#quick-start)，但是
+由于 Apex 新版本的核心 API 发生了变化，需要在 clone 的时候 checkout 到旧版本：
+```console
+$ git clone https://github.com/NVIDIA/apex
+$ cd apex
+$ git checkout 78c38db467c378759b4278a4ca8547763da5c91d
+$ pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
 
 #### 硬件要求
 
