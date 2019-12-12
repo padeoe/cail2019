@@ -1,4 +1,13 @@
-FROM padeoe/cail:base
+FROM pytorch/pytorch:1.1.0-cuda10.0-cudnn7.5-devel
+
+# 修改apt源
+ARG apt_mirror="archive.ubuntu.com"
+RUN sed -i "s/archive.ubuntu.com/$apt_mirror/g;s/security.ubuntu.com/$apt_mirror/g" /etc/apt/sources.list
+RUN apt-get update
+
+# 修改pip源
+ARG pypi_mirror="https://pypi.python.org/simple"
+RUN pip config set global.index-url $pypi_mirror
 
 # install zip
 RUN apt-get -y install zip
@@ -17,6 +26,12 @@ RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
     dpkg-reconfigure --frontend=noninteractive locales && \
     update-locale LANG=en_US.UTF-8
 ENV LC_ALL en_US.UTF-8
+
+# 配置python环境
+RUN echo "export PATH=/opt/conda/bin:$PATH" > /etc/environment
+RUN pip install Cython==0.29.7
+ADD requirements.txt .
+RUN pip install -r requirements.txt
 
 # entrypoint to execute command, fix permission problem
 ADD docker/submit/docker-entrypoint.sh /docker-entrypoint.sh

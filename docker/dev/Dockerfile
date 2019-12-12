@@ -1,6 +1,15 @@
-FROM padeoe/cail:base
+FROM pytorch/pytorch:1.1.0-cuda10.0-cudnn7.5-devel
 
-# 开启ssh
+# 修改apt源
+ARG apt_mirror="archive.ubuntu.com"
+RUN sed -i "s/archive.ubuntu.com/$apt_mirror/g;s/security.ubuntu.com/$apt_mirror/g" /etc/apt/sources.list
+RUN apt-get update
+
+# 修改pip源
+ARG pypi_mirror="https://pypi.python.org/simple"
+RUN pip config set global.index-url $pypi_mirror
+
+# 安装ssh
 RUN apt-get install -y openssh-server
 RUN mkdir /var/run/sshd
 RUN echo 'root:cail' | chpasswd
@@ -25,12 +34,16 @@ RUN ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 RUN dpkg-reconfigure --frontend noninteractive tzdata
 
 # 配置python环境
+RUN echo "export PATH=/opt/conda/bin:$PATH" > /etc/environment
 RUN pip install pip -U
+RUN pip install Cython==0.29.7
+## 安装jupyter notebook及主题
 RUN pip install prompt-toolkit jupyter
-#RUN mkdir -p ~/.jupyter/custom && \
-#    echo ".CodeMirror pre, .CodeMirror-dialog, .CodeMirror-dialog .CodeMirror-search-field, .terminal-app .terminal {\n \tfont-family: Consolas;\n \tfont-size: 12pt;\n}" > ~/.jupyter/custom/custom.css
 RUN pip install jupyterthemes
 RUN jt -t chesterish -f source
+## 安装requirements
+ADD docker/requirements.txt .
+RUN pip install -r requirements.txt
 
 ## matplotlib 安装中文字体
 RUN apt-get -y install fontconfig unzip
@@ -41,7 +54,6 @@ RUN fc-cache -f -v
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex && \
     cd apex && \
-    git checkout 78c38db467c378759b4278a4ca8547763da5c91d && \
     pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" .
 
 WORKDIR /cail

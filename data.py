@@ -5,7 +5,7 @@ import os
 import random
 from zipfile import ZipFile
 
-from pytorch_pretrained_bert import cached_path
+from transformers import cached_path
 
 logger = logging.getLogger(__name__)
 

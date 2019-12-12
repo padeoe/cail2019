@@ -1,17 +1,5 @@
 # 开发环境搭建
 
-## Get `base` image
-The base image is the parent image of dev image and submit image.
-
-pull image from dockerhub
-```bash
-docker pull padeoe/cail:base
-```
-or build it by yourself
-```bash
-docker build -t cail:base -f docker/base/Dockerfile .
-```
-
 ## Set up development environment
 This will help you build a simulation environment that is consistent with the online system  of the competition, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.
 
@@ -23,7 +11,11 @@ docker pull padeoe/cail:dev
 ```
 or build it by yourself
 ```bash
-docker build -t cail:dev -f docker/dev/Dockerfile .
+docker build \
+    -t cail:dev \
+    --build-arg apt_mirror="mirrors.aliyun.com" \
+    --build-arg pypi_mirror="https://mirrors.aliyun.com/pypi/simple" \
+    -f docker/dev/Dockerfile .
 ```
 
 **2.run container**
@@ -58,7 +50,11 @@ docker pull padeoe/cail:submit
 ```
 or build it by yourself
 ```bash
-docker build -t cail:submit -f docker/submit/Dockerfile .
+docker build \
+    -t cail:submit \
+    --build-arg apt_mirror="mirrors.aliyun.com" \
+    --build-arg pypi_mirror="https://mirrors.aliyun.com/pypi/simple" \
+    -f docker/submit/Dockerfile .
 ```
 
 **2.run test and zip codes**
@@ -88,12 +84,18 @@ docker pull padeoe/cail:train
 ```
 or build it by yourself
 ```bash
-docker build -t cail:train -f docker/train/Dockerfile .
+docker build \
+    -t cail:train \
+    --build-arg apt_mirror="mirrors.aliyun.com" \
+    --build-arg pypi_mirror="https://mirrors.aliyun.com/pypi/simple" \
+    -f docker/train/Dockerfile .
 ```
 
 **2.prepare data**
-
-Put dataset files at `DATA_DIR`, the layout is like this:
+The dataset provided by organizer is downloaded during image building process,
+so the dataset is bundled in docker image in `/cail/data`.
+If you want to use your own dataset, put dataset files at `DATA_DIR`, 
+the layout should be like this:
 
 ```console
 $ tree data/

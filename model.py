@@ -7,10 +7,6 @@ from typing import Tuple, List, Union
 import numpy as np
 import pandas as pd
 import torch
-from pytorch_pretrained_bert import BertTokenizer, BertAdam
-from pytorch_pretrained_bert.file_utils import WEIGHTS_NAME, CONFIG_NAME
-from pytorch_pretrained_bert.modeling import BertPreTrainedModel, BertModel
-from pytorch_pretrained_bert.optimization import WarmupLinearSchedule
 from sklearn.model_selection import KFold
 from torch import nn
 from torch.autograd import Variable
@@ -19,6 +15,10 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler)
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
+from transformers import AdamW, get_linear_schedule_with_warmup, BertConfig, BertTokenizer
+from transformers.modeling_bert import BertPreTrainedModel, BertModel
+
+logger = logging.getLogger('train model')
 
 
 class HyperParameters(object):
@@ -26,7 +26,8 @@ class HyperParameters(object):
     用于管理模型超参数
     """
 
-    def __init__(self, max_length: int = 128, epochs=4, batch_size=32, learning_rate=2e-5, fp16=True) -> None:
+    def __init__(self, max_length: int = 128, epochs=4, batch_size=32, learning_rate=2e-5, fp16=True,
+                 fp16_opt_level='O1', max_grad_norm=1.0, warmup_steps=0.1) -> None:
         self.max_length = max_length
         """句子的最大长度"""
         self.epochs = epochs
@@ -37,9 +38,26 @@ class HyperParameters(object):
         """学习率"""
         self.fp16 = fp16
         """是否使用fp16混合精度训练"""
+        self.fp16_opt_level = fp16_opt_level
+        """用于fp16，Apex AMP优化等级，['O0', 'O1', 'O2', and 'O3']可选，详见https://nvidia.github.io/apex/amp.html"""
+        self.max_grad_norm = max_grad_norm
+        """最大梯度裁剪"""
+        self.warmup_steps = warmup_steps
+        """学习率线性预热步数"""
 
     def __repr__(self) -> str:
         return self.__dict__.__repr__()
+
+
+class SimMatchModelConfig(BertConfig):
+    """
+    相似案例匹配模型的配置
+    """
+
+    def __init__(self, max_len=512, algorithm='BertForSimMatchModel', **kwargs):
+        super(SimMatchModelConfig, self).__init__(**kwargs)
+        self.max_len = max_len
+        self.algorithm = algorithm
 
 
 class BertForSimMatchModel(BertPreTrainedModel):
@@ -47,24 +65,34 @@ class BertForSimMatchModel(BertPreTrainedModel):
     ab、ac交互并编码
     """
 
-    def __init__(self, config, *inputs, **kwargs):
-        super().__init__(config, *inputs, **kwargs)
+    def __init__(self, config):
+        super(BertForSimMatchModel, self).__init__(config)
         self.bert = BertModel(config)
-        self.dropout = nn.Dropout(p=0.1)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.seq_relationship = nn.Linear(config.hidden_size, 2)
-        self.apply(self.init_bert_weights)
+        self.init_weights()
 
-    def forward(self, ab, ac, labels=None):
-        _, ab_pooled_output = self.bert(*ab, output_all_encoded_layers=False)
-        _, ac_pooled_output = self.bert(*ac, output_all_encoded_layers=False)
+    def forward(self, ab, ac, labels=None, mode='prob'):
+        ab_pooled_output = self.bert(*ab)[1]
+        ac_pooled_output = self.bert(*ac)[1]
         subtraction_output = ab_pooled_output - ac_pooled_output
         concated_pooled_output = self.dropout(subtraction_output)
         output = self.seq_relationship(concated_pooled_output)
 
-        prob = torch.nn.functional.softmax(Variable(output), dim=1)
-        loss_fct = CrossEntropyLoss()
-        loss = loss_fct(output.view(-1, 2), labels.view(-1))
-        return output, prob, loss
+        if mode == 'prob':
+            prob = torch.nn.functional.softmax(Variable(output), dim=1)
+            return prob
+        elif mode == 'logits':
+            return output
+        elif mode == 'loss':
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(output.view(-1, 2), labels.view(-1))
+            return loss
+        elif mode == 'evaluate':
+            prob = torch.nn.functional.softmax(Variable(output), dim=1)
+            loss_fct = CrossEntropyLoss()
+            loss = loss_fct(output.view(-1, 2), labels.view(-1))
+            return output, prob, loss
 
 
 class TripletTextDataset(Dataset):
@@ -182,14 +210,14 @@ class BertSimMatchModel(object):
     基于 Bert 实现的案件相似匹配模型
     """
 
-    def __init__(self, model, tokenizer, max_length, algorithm, device: torch.device = None) -> None:
+    def __init__(self, model, tokenizer, config: SimMatchModelConfig, device: torch.device = None) -> None:
         self.model = model
         self.tokenizer = tokenizer
-        self.max_length = max_length
+        self.max_length = config.max_len
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
         self.model.to(self.device)
         self.model.eval()
-        self.algorithm = algorithm
+        self.algorithm = config.algorithm
         self.model_class = algorithm_map[self.algorithm]
         self.predict_batch_size = 8
 
@@ -203,17 +231,8 @@ class BertSimMatchModel(object):
         # Save a trained model, configuration and tokenizer
         model_to_save = self.model.module if hasattr(self.model,
                                                      'module') else self.model  # Only save the model it-self
-
-        # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(model_dir, WEIGHTS_NAME)
-        output_config_file = os.path.join(model_dir, CONFIG_NAME)
-
-        torch.save(model_to_save.state_dict(), output_model_file)
-        model_to_save.config.to_json_file(output_config_file)
-        self.tokenizer.save_vocabulary(model_dir)
-
-        with open(os.path.join(model_dir, 'param.json'), mode='w') as f:
-            json.dump({'max_len': self.max_length, "algorithm": self.algorithm}, f)
+        model_to_save.save_pretrained(model_dir)
+        self.tokenizer.save_pretrained(model_dir)
 
     @classmethod
     def load(cls, model_dir, device=None):
@@ -224,15 +243,11 @@ class BertSimMatchModel(object):
         :param device:
         :return:
         """
-        with open(os.path.join(model_dir, 'param.json')) as f:
-            param_dict = json.load(f)
-            max_length = param_dict['max_len']
-            algorithm = param_dict['algorithm']
-
         tokenizer = BertTokenizer.from_pretrained(model_dir, do_lower_case=False)
-        model_class = algorithm_map[algorithm]
+        config = SimMatchModelConfig.from_pretrained(model_dir)
+        model_class = algorithm_map[config.algorithm]
         model = model_class.from_pretrained(model_dir)
-        return cls(model, tokenizer, max_length, algorithm, device)
+        return cls(model, tokenizer, model.config, device)
 
     def predict(self, text_tuples: Union[List[Tuple[str, str, str]], TripletTextDataset]) -> List[Tuple[str, float]]:
         if isinstance(text_tuples, Dataset):
@@ -249,7 +264,7 @@ class BertSimMatchModel(object):
 
         for batch in dataloader:
             with torch.no_grad():
-                predict_results = self.model(*batch)[1].cpu().numpy()
+                predict_results = self.model(*batch, mode='prob').cpu().numpy()
                 cata_indexes = np.argmax(predict_results, axis=1)
 
                 for i_sample, cata_index in enumerate(cata_indexes):
@@ -338,8 +353,6 @@ class BertModelTrainer(object):
     def train(self, model_dir, kfold=1):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         n_gpu = torch.cuda.device_count()
-        # n_gpu = 1
-        # torch.cuda.set_device(1)
         logger.info("***** Running training *****")
         logger.info("dataset: {}".format(self.dataset_path))
         logger.info("k-fold number: {}".format(kfold))
@@ -362,44 +375,44 @@ class BertModelTrainer(object):
         for k, (train_data, test_data, test_label_list) in enumerate(data, start=1):
             one_fold_acc_list = []
             bert_model = self.model_class.from_pretrained(self.bert_model_dir)
-            if self.param.fp16:
-                bert_model.half()
             bert_model.to(device)
-            if n_gpu > 1:
-                bert_model = torch.nn.DataParallel(bert_model)
+
+            config = bert_model.config
+            config.max_len = self.param.max_length
+            config.algorithm = self.algorithm
 
             num_train_optimization_steps = int(len(train_data) / self.param.batch_size) * self.param.epochs
 
             param_optimizer = list(bert_model.named_parameters())
-            no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+            no_decay = ['bias', 'LayerNorm.weight']
             optimizer_grouped_parameters = [
                 {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
                  'weight_decay': 0.01},
                 {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
             ]
 
-            if self.param.fp16:
-                from apex.optimizers import FP16_Optimizer
-                from apex.optimizers import FusedAdam
-
-                optimizer = FusedAdam(optimizer_grouped_parameters,
-                                      lr=self.param.learning_rate,
-                                      bias_correction=False,
-                                      max_grad_norm=1.0)
-
-                loss_scale = 0
-                if loss_scale == 0:
-                    optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
-                else:
-                    optimizer = FP16_Optimizer(optimizer, static_loss_scale=loss_scale)
-                warmup_linear = WarmupLinearSchedule(warmup=0.1,
-                                                     t_total=num_train_optimization_steps)
+            if self.param.warmup_steps < 1:
+                num_warmup_steps = num_train_optimization_steps * self.param.warmup_steps
             else:
-                optimizer = BertAdam(optimizer_grouped_parameters,
-                                     lr=self.param.learning_rate,
-                                     warmup=0.1,
-                                     t_total=num_train_optimization_steps)
+                num_warmup_steps = self.param.warmup_steps
+            optimizer = AdamW(optimizer_grouped_parameters, lr=self.param.learning_rate, eps=1e-8)
+            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps,
+                                                        num_training_steps=num_train_optimization_steps)
+
+            if self.param.fp16:
+                try:
+                    from apex import amp
+                except ImportError:
+                    raise ImportError(
+                        "Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+
+                bert_model, optimizer = amp.initialize(bert_model, optimizer, opt_level=self.param.fp16_opt_level)
+
+            if n_gpu > 1:
+                bert_model = torch.nn.DataParallel(bert_model)
+
             global_step = 0
+            bert_model.zero_grad()
 
             logger.info("***** fold {}/{} *****".format(k, kfold))
             logger.info("  Num examples = %d", len(train_data))
@@ -426,32 +439,30 @@ class BertModelTrainer(object):
                     #     bert_model.train()
 
                     # define a new function to compute loss values for both output_modes
-                    loss = bert_model(*batch)[2]
+                    loss = bert_model(*batch, mode='loss')
 
                     if n_gpu > 1:
                         loss = loss.mean()  # mean() to average on multi-gpu.
 
                     if self.param.fp16:
-                        optimizer.backward(loss)
-
-                        # modify learning rate with special warm up BERT uses
-                        # if args.fp16 is False, BertAdam is used that handles this automatically
-                        lr_this_step = self.param.learning_rate * warmup_linear.get_lr(global_step, 0.1)
-                        for param_group in optimizer.param_groups:
-                            param_group['lr'] = lr_this_step
+                        with amp.scale_loss(loss, optimizer) as scaled_loss:
+                            scaled_loss.backward()
+                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), self.param.max_grad_norm)
                     else:
                         loss.backward()
+                        torch.nn.utils.clip_grad_norm_(bert_model.parameters(), self.param.max_grad_norm)
 
                     tr_loss += loss.item()
                     optimizer.step()
-                    optimizer.zero_grad()
+                    scheduler.step()  # Update learning rate schedule
+                    bert_model.zero_grad()
                     global_step += 1
 
                     steps.set_description(
                         "Epoch {}/{}, Loss {:.7f}".format(epoch + 1, self.param.epochs,
                                                           loss.item()))
 
-                model = BertSimMatchModel(bert_model, tokenizer, self.param.max_length, self.algorithm)
+                model = BertSimMatchModel(bert_model, tokenizer, config)
                 acc, loss = self.evaluate(model, test_data, test_label_list)
                 one_fold_acc_list.append(acc)
                 logger.info(
@@ -459,7 +470,7 @@ class BertModelTrainer(object):
                         epoch + 1, tr_loss, acc, loss))
                 bert_model.train()
             all_acc_list.append(one_fold_acc_list)
-            model = BertSimMatchModel(bert_model, tokenizer, self.param.max_length, self.algorithm)
+            model = BertSimMatchModel(bert_model, tokenizer, config)
             model.save(model_dir)
 
         logger.info("***** Stats *****")
@@ -498,10 +509,10 @@ class BertModelTrainer(object):
         loss_sum = 0
         for batch in dataloader:
             with torch.no_grad():
-                output = model.model(*batch)
-                predict_results = output[1].cpu().numpy()
+                output = model.model(*batch, mode='evaluate')
                 loss = output[2].mean().cpu().item()
                 loss_sum += loss
+                predict_results = output[1].cpu().numpy()
                 cata_indexes = np.argmax(predict_results, axis=1)
 
                 for i_sample, cata_index in enumerate(cata_indexes):
@@ -612,7 +623,7 @@ class InputExample(object):
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
 
-        return input_ids, input_mask, segment_ids
+        return input_ids, segment_ids, input_mask
 
     def to_two_pair_feature(self, tokenizer, max_seq_length) -> Tuple[InputFeatures, InputFeatures]:
         ab = self._text_pair_to_feature(self.text_a, self.text_b, tokenizer, max_seq_length)
@@ -636,47 +647,3 @@ def _truncate_seq_pair(tokens_a: list, tokens_b: list, max_length):
             tokens_a.pop(0)
         else:
             tokens_b.pop(0)
-
-
-logger = logging.getLogger('train model')
-logger.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
-
-MODEL_DIR = 'model'
-if not os.path.exists(MODEL_DIR):
-    os.mkdir(MODEL_DIR)
-fh = logging.FileHandler(os.path.join(MODEL_DIR, 'train.log'), encoding='utf-8')
-fh.setLevel(logging.INFO)
-
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)
-
-fh.setFormatter(formatter)
-ch.setFormatter(formatter)
-
-logger.addHandler(fh)
-logger.addHandler(ch)
-
-if __name__ == '__main__':
-    BERT_PRETRAINED_MODEL = '/bert/pytorch_chinese_L-12_H-768_A-12'
-
-    # TRAINING_DATASET = 'data/train/input.txt'  # for quick dev
-    TRAINING_DATASET = 'data/raw/CAIL2019-SCM-big/SCM_5k.json'
-
-    test_input_path = 'data/test/input.txt'
-    test_ground_truth_path = 'data/test/ground_truth.txt'
-
-    config = {
-        "max_length": 512,
-        "epochs": 2,
-        "batch_size": 12,
-        "learning_rate": 2e-5,
-        "fp16": True
-    }
-    hyper_parameter = HyperParameters()
-    hyper_parameter.__dict__ = config
-    algorithm = 'BertForSimMatchModel'
-
-    trainer = BertModelTrainer(TRAINING_DATASET, BERT_PRETRAINED_MODEL, hyper_parameter, algorithm, test_input_path,
-                               test_ground_truth_path)
-    trainer.train(MODEL_DIR, 1)

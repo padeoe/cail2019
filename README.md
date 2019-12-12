@@ -80,21 +80,13 @@
 - [requirements.txt](requirements.txt)
 - Windows 和 Linux 均可
 - Nvidia Apex：可选，用于混合精度训练，将代码中 `fp16 = True` 修改为 `fp16 = False` 可不依赖 Apex。使用 apex 可以降低显存消耗并提速。
-
-*Apex 安装*参见[https://github.com/NVIDIA/apex#quick-start](https://github.com/NVIDIA/apex#quick-start)，但是
-由于 Apex 新版本的核心 API 发生了变化，需要在 clone 的时候 checkout 到旧版本：
-```console
-$ git clone https://github.com/NVIDIA/apex
-$ cd apex
-$ git checkout 78c38db467c378759b4278a4ca8547763da5c91d
-$ pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
-```
+Apex 安装参见[https://github.com/NVIDIA/apex#quick-start](https://github.com/NVIDIA/apex#quick-start)。
 
 #### 硬件要求
 
 建议使用多块显卡且显存总量大于 15GB，否则需要降低 batch size。cpu 训练很慢。
 
-我们测试了使用了多种参数和硬件资源资源组合，训练一个 epoch 所需的显存和时间如下（除 CPU 外都启用了混合精度训练）：
+我们测试了使用了多种参数和硬件资源组合，训练一个 epoch 所需的显存和时间如下（除 CPU 外都启用了混合精度训练）：
 
 |设备   | batch_size  | 显存消耗  | 训练时间  |
 |---|---|---|---|
@@ -113,15 +105,16 @@ $ pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--c
 $ tree
 .
 ├── cli_pred.py    ->  命令行交互式预测
-├── data           ->  任务数据集
+├── data           ->  数据集
 │   └── ...
 ├── data.py        ->  数据下载和划分
 ├── docker
 │   └── ...
 ├── judger.py      ->  比赛官方的模型性能评测脚本
 ├── main.py        ->  比赛要求的模型调用脚本
-├── model.py       ->  模型核心代码，训练入口
-└── requirements.txt
+├── model.py       ->  模型核心代码
+├── requirements.txt
+└── train.py       ->  训练入口
 ```
 #### 数据集
 
@@ -145,7 +138,7 @@ data
 `raw` 存放原始数据集文件。`train`、`test` 则是划分产生的固定训练测试集，用于快速测试模型的可用性和性能。
 
 ### 训练
-[`model.py`](model.py) 的 `main` 定义了训练参数：
+[`train.py`](train.py) 的 `main` 定义了训练参数：
 ```python
 if __name__ == '__main__':
     BERT_PRETRAINED_MODEL = '/bert/pytorch_chinese_L-12_H-768_A-12'
@@ -158,7 +151,10 @@ if __name__ == '__main__':
         "epochs": 2,
         "batch_size": 12,
         "learning_rate": 2e-5,
-        "fp16": True
+        "fp16": True,
+        'fp16_opt_level': 'O1',
+        'max_grad_norm': 1.0,
+        'warmup_steps': 0.1
     }
 
     trainer = BertModelTrainer(TRAINING_DATASET, BERT_PRETRAINED_MODEL, hyper_parameter, algorithm, test_input_path,test_ground_truth_path)
@@ -167,7 +163,7 @@ if __name__ == '__main__':
 
 确保其中 `BERT_PRETRAINED_MODEL` 为 pytorch 版本的 BERT 预训练模型的路径，其他参数默认无需修改，即可开始训练：
 ```bash
-python model.py
+python train.py
 ```
 
 运行过程中会打印每一个 epoch 的 loss 和 accuracy。修改 `trainer.train(MODEL_DIR, 1)` 
@@ -199,7 +195,7 @@ python judger.py $GROUND_TRUTH_FILE $PREDICT_OUTPUT_FILE
 运行后会输出模型准确率。
 
 ### 使用Docker构建
-参见[docker](docker)目录下的文档。
+参见 [docker](docker) 目录下的文档。
 
 ## 致谢
 
