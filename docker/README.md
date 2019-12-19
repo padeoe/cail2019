@@ -59,6 +59,7 @@ docker build \
 ```
 
 **2.prepare data**
+
 The dataset provided by organizer is downloaded during image building process,
 so the dataset is bundled in docker image in `/cail/data`.
 If you want to use your own dataset, put dataset files at `DATA_DIR`, 

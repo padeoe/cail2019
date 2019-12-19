@@ -1,6 +1,6 @@
 from model import BertSimMatchModel
 
-MODEL_DIR = 'model'
+MODEL_DIR = "model"
 model = BertSimMatchModel.load(MODEL_DIR)
 
 while True:

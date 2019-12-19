@@ -11,14 +11,19 @@ from sklearn.model_selection import KFold
 from torch import nn
 from torch.autograd import Variable
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler)
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data import Dataset
 from torch.utils.data.dataloader import default_collate
 from tqdm import tqdm
-from transformers import AdamW, get_linear_schedule_with_warmup, BertConfig, BertTokenizer
+from transformers import (
+    AdamW,
+    get_linear_schedule_with_warmup,
+    BertConfig,
+    BertTokenizer,
+)
 from transformers.modeling_bert import BertPreTrainedModel, BertModel
 
-logger = logging.getLogger('train model')
+logger = logging.getLogger("train model")
 
 
 class HyperParameters(object):
@@ -26,8 +31,17 @@ class HyperParameters(object):
     用于管理模型超参数
     """
 
-    def __init__(self, max_length: int = 128, epochs=4, batch_size=32, learning_rate=2e-5, fp16=True,
-                 fp16_opt_level='O1', max_grad_norm=1.0, warmup_steps=0.1) -> None:
+    def __init__(
+        self,
+        max_length: int = 128,
+        epochs=4,
+        batch_size=32,
+        learning_rate=2e-5,
+        fp16=True,
+        fp16_opt_level="O1",
+        max_grad_norm=1.0,
+        warmup_steps=0.1,
+    ) -> None:
         self.max_length = max_length
         """句子的最大长度"""
         self.epochs = epochs
@@ -54,7 +68,7 @@ class SimMatchModelConfig(BertConfig):
     相似案例匹配模型的配置
     """
 
-    def __init__(self, max_len=512, algorithm='BertForSimMatchModel', **kwargs):
+    def __init__(self, max_len=512, algorithm="BertForSimMatchModel", **kwargs):
         super(SimMatchModelConfig, self).__init__(**kwargs)
         self.max_len = max_len
         self.algorithm = algorithm
@@ -72,23 +86,23 @@ class BertForSimMatchModel(BertPreTrainedModel):
         self.seq_relationship = nn.Linear(config.hidden_size, 2)
         self.init_weights()
 
-    def forward(self, ab, ac, labels=None, mode='prob'):
+    def forward(self, ab, ac, labels=None, mode="prob"):
         ab_pooled_output = self.bert(*ab)[1]
         ac_pooled_output = self.bert(*ac)[1]
         subtraction_output = ab_pooled_output - ac_pooled_output
         concated_pooled_output = self.dropout(subtraction_output)
         output = self.seq_relationship(concated_pooled_output)
 
-        if mode == 'prob':
+        if mode == "prob":
             prob = torch.nn.functional.softmax(Variable(output), dim=1)
             return prob
-        elif mode == 'logits':
+        elif mode == "logits":
             return output
-        elif mode == 'loss':
+        elif mode == "loss":
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(output.view(-1, 2), labels.view(-1))
             return loss
-        elif mode == 'evaluate':
+        elif mode == "evaluate":
             prob = torch.nn.functional.softmax(Variable(output), dim=1)
             loss_fct = CrossEntropyLoss()
             loss = loss_fct(output.view(-1, 2), labels.view(-1))
@@ -96,78 +110,84 @@ class BertForSimMatchModel(BertPreTrainedModel):
 
 
 class TripletTextDataset(Dataset):
-
     def __init__(self, text_a_list, text_b_list, text_c_list, label_list=None):
         if label_list is None or len(label_list) == 0:
             label_list = [None] * len(text_a_list)
-        assert all(len(label_list) == len(text_list) for text_list in [text_a_list, text_b_list, text_c_list])
+        assert all(
+            len(label_list) == len(text_list)
+            for text_list in [text_a_list, text_b_list, text_c_list]
+        )
         self.text_a_list = text_a_list
         self.text_b_list = text_b_list
         self.text_c_list = text_c_list
-        self.label_list = [0 if label == 'B' else 1 for label in label_list]
+        self.label_list = [0 if label == "B" else 1 for label in label_list]
 
     def __len__(self):
         return len(self.label_list)
 
     def __getitem__(self, index):
-        text_a, text_b, text_c, label = self.text_a_list[index], self.text_b_list[index], self.text_c_list[index], \
-                                        self.label_list[index]
+        text_a, text_b, text_c, label = (
+            self.text_a_list[index],
+            self.text_b_list[index],
+            self.text_c_list[index],
+            self.label_list[index],
+        )
         return text_a, text_b, text_c, label
 
     @classmethod
     def from_dataframe(cls, df):
-        text_a_list = df['A'].tolist()
-        text_b_list = df['B'].tolist()
-        text_c_list = df['C'].tolist()
-        if 'label' not in df:
-            df['label'] = 'B'
-        label_list = df['label'].tolist()
+        text_a_list = df["A"].tolist()
+        text_b_list = df["B"].tolist()
+        text_c_list = df["C"].tolist()
+        if "label" not in df:
+            df["label"] = "B"
+        label_list = df["label"].tolist()
         return cls(text_a_list, text_b_list, text_c_list, label_list)
 
     @classmethod
     def from_dict_list(cls, data, use_augment=False):
         df = pd.DataFrame(data)
-        if 'label' not in df:
-            df['label'] = 'B'
+        if "label" not in df:
+            df["label"] = "B"
         if use_augment:
             df = TripletTextDataset.augment(df)
         return cls.from_dataframe(df)
 
     @classmethod
     def from_jsons(cls, json_lines_file, use_augment=False):
-        with open(json_lines_file, encoding='utf-8') as f:
+        with open(json_lines_file, encoding="utf-8") as f:
             data = list(map(lambda line: json.loads(line), f))
         return cls.from_dict_list(data, use_augment)
 
     @staticmethod
     def augment(df):
         df_cp1 = df.copy()
-        df_cp1['B'] = df['C']
-        df_cp1['C'] = df['B']
-        df_cp1['label'] = 'C'
+        df_cp1["B"] = df["C"]
+        df_cp1["C"] = df["B"]
+        df_cp1["label"] = "C"
 
         df_cp2 = df.copy()
-        df_cp2['A'] = df['B']
-        df_cp2['B'] = df['A']
-        df_cp2['label'] = 'B'
+        df_cp2["A"] = df["B"]
+        df_cp2["B"] = df["A"]
+        df_cp2["label"] = "B"
 
         df_cp3 = df.copy()
-        df_cp3['A'] = df['B']
-        df_cp3['B'] = df['C']
-        df_cp3['C'] = df['A']
-        df_cp3['label'] = 'C'
+        df_cp3["A"] = df["B"]
+        df_cp3["B"] = df["C"]
+        df_cp3["C"] = df["A"]
+        df_cp3["label"] = "C"
 
         df_cp4 = df.copy()
-        df_cp4['A'] = df['C']
-        df_cp4['B'] = df['A']
-        df_cp4['C'] = df['C']
-        df_cp4['label'] = 'C'
+        df_cp4["A"] = df["C"]
+        df_cp4["B"] = df["A"]
+        df_cp4["C"] = df["C"]
+        df_cp4["label"] = "C"
 
         df_cp5 = df.copy()
-        df_cp5['A'] = df['C']
-        df_cp5['B'] = df['C']
-        df_cp5['C'] = df['A']
-        df_cp5['label'] = 'B'
+        df_cp5["A"] = df["C"]
+        df_cp5["B"] = df["C"]
+        df_cp5["C"] = df["A"]
+        df_cp5["label"] = "B"
 
         df = pd.concat([df, df_cp1, df_cp2, df_cp3, df_cp4, df_cp5])
         df = df.drop_duplicates()
@@ -189,8 +209,13 @@ def get_collator(max_len, device, tokenizer, model_class):
         example_tensors = []
         for text_a, text_b, text_c, label in batch:
             input_example = InputExample(text_a, text_b, text_c, label)
-            ab_feature, ac_feature = input_example.to_two_pair_feature(tokenizer, max_len)
-            ab_tensor, ac_tensor = ab_feature.to_tensor(device), ac_feature.to_tensor(device)
+            ab_feature, ac_feature = input_example.to_two_pair_feature(
+                tokenizer, max_len
+            )
+            ab_tensor, ac_tensor = (
+                ab_feature.to_tensor(device),
+                ac_feature.to_tensor(device),
+            )
             label_tensor = torch.LongTensor([label]).to(device)
             example_tensors.append((ab_tensor, ac_tensor, label_tensor))
 
@@ -200,9 +225,7 @@ def get_collator(max_len, device, tokenizer, model_class):
         return two_pair_collate_fn
 
 
-algorithm_map = {
-    "BertForSimMatchModel": BertForSimMatchModel
-}
+algorithm_map = {"BertForSimMatchModel": BertForSimMatchModel}
 
 
 class BertSimMatchModel(object):
@@ -210,11 +233,17 @@ class BertSimMatchModel(object):
     基于 Bert 实现的案件相似匹配模型
     """
 
-    def __init__(self, model, tokenizer, config: SimMatchModelConfig, device: torch.device = None) -> None:
+    def __init__(
+        self, model, tokenizer, config: SimMatchModelConfig, device: torch.device = None
+    ) -> None:
         self.model = model
         self.tokenizer = tokenizer
         self.max_length = config.max_len
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if device is None else device
+        self.device = (
+            torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            if device is None
+            else device
+        )
         self.model.to(self.device)
         self.model.eval()
         self.algorithm = config.algorithm
@@ -229,8 +258,9 @@ class BertSimMatchModel(object):
         :return:
         """
         # Save a trained model, configuration and tokenizer
-        model_to_save = self.model.module if hasattr(self.model,
-                                                     'module') else self.model  # Only save the model it-self
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
         model_to_save.save_pretrained(model_dir)
         self.tokenizer.save_pretrained(model_dir)
 
@@ -249,7 +279,9 @@ class BertSimMatchModel(object):
         model = model_class.from_pretrained(model_dir)
         return cls(model, tokenizer, model.config, device)
 
-    def predict(self, text_tuples: Union[List[Tuple[str, str, str]], TripletTextDataset]) -> List[Tuple[str, float]]:
+    def predict(
+        self, text_tuples: Union[List[Tuple[str, str, str]], TripletTextDataset]
+    ) -> List[Tuple[str, float]]:
         if isinstance(text_tuples, Dataset):
             data = text_tuples
         else:
@@ -257,27 +289,38 @@ class BertSimMatchModel(object):
 
             data = TripletTextDataset(text_a_list, text_b_list, text_c_list, None)
         sampler = SequentialSampler(data)
-        collate_fn = get_collator(self.max_length, self.device, self.tokenizer, self.model_class)
-        dataloader = DataLoader(data, sampler=sampler, batch_size=8, collate_fn=collate_fn)
+        collate_fn = get_collator(
+            self.max_length, self.device, self.tokenizer, self.model_class
+        )
+        dataloader = DataLoader(
+            data, sampler=sampler, batch_size=8, collate_fn=collate_fn
+        )
 
         final_results = []
 
         for batch in dataloader:
             with torch.no_grad():
-                predict_results = self.model(*batch, mode='prob').cpu().numpy()
+                predict_results = self.model(*batch, mode="prob").cpu().numpy()
                 cata_indexes = np.argmax(predict_results, axis=1)
 
                 for i_sample, cata_index in enumerate(cata_indexes):
                     prob = predict_results[i_sample][cata_index]
-                    label = 'B' if cata_index == 0 else 'C'
+                    label = "B" if cata_index == 0 else "C"
                     final_results.append((str(label), float(prob)))
 
         return final_results
 
 
 class BertModelTrainer(object):
-    def __init__(self, dataset_path, bert_model_dir, param: HyperParameters, algorithm,
-                 test_input_path, test_ground_truth_path) -> None:
+    def __init__(
+        self,
+        dataset_path,
+        bert_model_dir,
+        param: HyperParameters,
+        algorithm,
+        test_input_path,
+        test_ground_truth_path,
+    ) -> None:
         """
 
         :param dataset_path: 数据集路径。 默认当作是训练集，但当train函数采用了kfold参数时，将对该数据集进行划分并做交叉验证
@@ -294,10 +337,11 @@ class BertModelTrainer(object):
         self.test_ground_truth_path = test_ground_truth_path
         self.algorithm = algorithm
         self.model_class = algorithm_map[self.algorithm]
-        logger.info('算法:' + algorithm)
+        logger.info("算法:" + algorithm)
 
-    def load_dataset(self, n_splits: int = 1) \
-            -> List[Tuple[TripletTextDataset, TripletTextDataset, List[str]]]:
+    def load_dataset(
+        self, n_splits: int = 1
+    ) -> List[Tuple[TripletTextDataset, TripletTextDataset, List[str]]]:
         """
         划分k折交叉验证数据集用于cv
 
@@ -308,7 +352,9 @@ class BertModelTrainer(object):
         data = []
 
         if n_splits == 1:
-            train_data = TripletTextDataset.from_jsons(self.dataset_path, use_augment=True)
+            train_data = TripletTextDataset.from_jsons(
+                self.dataset_path, use_augment=True
+            )
             test_data = TripletTextDataset.from_jsons(self.test_input_path)
             with open(self.test_ground_truth_path) as f:
                 test_label_list = [line.strip() for line in f.readlines()]
@@ -317,30 +363,32 @@ class BertModelTrainer(object):
             return data
 
         raw_data_list = []
-        with open(self.dataset_path, encoding='utf-8') as raw_input:
+        with open(self.dataset_path, encoding="utf-8") as raw_input:
             for line in raw_input:
-                raw_data_list.append(json.loads(line.strip(), encoding='utf-8'))
+                raw_data_list.append(json.loads(line.strip(), encoding="utf-8"))
 
         kf = KFold(n_splits, shuffle=True, random_state=42)
         random.seed(42)
         for train_index, test_index in kf.split(raw_data_list):
             # 准备训练集
             train_data_list = [raw_data_list[i] for i in train_index]
-            train_data = TripletTextDataset.from_dict_list(train_data_list, use_augment=True)
+            train_data = TripletTextDataset.from_dict_list(
+                train_data_list, use_augment=True
+            )
 
             # 准备测试集，打乱BC顺序
             test_data_list = [raw_data_list[i] for i in test_index]
             shuffled_test_data_list = []
             test_label_list = []
             for item in test_data_list:
-                a = item['A']
-                b = item['B']
-                c = item['C']
+                a = item["A"]
+                b = item["B"]
+                c = item["C"]
 
                 choice = int(random.getrandbits(1))
-                label = 'B' if choice == 0 else 'C'
-                if label == 'C':
-                    item = {'A': a, 'B': c, 'C': b}
+                label = "B" if choice == 0 else "C"
+                if label == "C":
+                    item = {"A": a, "B": c, "C": b}
 
                 shuffled_test_data_list.append(item)
                 test_label_list.append(label)
@@ -357,7 +405,11 @@ class BertModelTrainer(object):
         logger.info("dataset: {}".format(self.dataset_path))
         logger.info("k-fold number: {}".format(kfold))
         logger.info("device: {} n_gpu: {}".format(device, n_gpu))
-        logger.info("config: {}".format(json.dumps(self.param.__dict__, indent=4, sort_keys=True)))
+        logger.info(
+            "config: {}".format(
+                json.dumps(self.param.__dict__, indent=4, sort_keys=True)
+            )
+        )
 
         random.seed(42)
         np.random.seed(42)
@@ -368,7 +420,9 @@ class BertModelTrainer(object):
         if not os.path.exists(model_dir):
             os.makedirs(model_dir)
 
-        tokenizer = BertTokenizer.from_pretrained(self.bert_model_dir, do_lower_case=True)
+        tokenizer = BertTokenizer.from_pretrained(
+            self.bert_model_dir, do_lower_case=True
+        )
         data = self.load_dataset(kfold)
 
         all_acc_list = []
@@ -381,32 +435,55 @@ class BertModelTrainer(object):
             config.max_len = self.param.max_length
             config.algorithm = self.algorithm
 
-            num_train_optimization_steps = int(len(train_data) / self.param.batch_size) * self.param.epochs
+            num_train_optimization_steps = (
+                int(len(train_data) / self.param.batch_size) * self.param.epochs
+            )
 
             param_optimizer = list(bert_model.named_parameters())
-            no_decay = ['bias', 'LayerNorm.weight']
+            no_decay = ["bias", "LayerNorm.weight"]
             optimizer_grouped_parameters = [
-                {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-                 'weight_decay': 0.01},
-                {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+                {
+                    "params": [
+                        p
+                        for n, p in param_optimizer
+                        if not any(nd in n for nd in no_decay)
+                    ],
+                    "weight_decay": 0.01,
+                },
+                {
+                    "params": [
+                        p for n, p in param_optimizer if any(nd in n for nd in no_decay)
+                    ],
+                    "weight_decay": 0.0,
+                },
             ]
 
             if self.param.warmup_steps < 1:
-                num_warmup_steps = num_train_optimization_steps * self.param.warmup_steps
+                num_warmup_steps = (
+                    num_train_optimization_steps * self.param.warmup_steps
+                )
             else:
                 num_warmup_steps = self.param.warmup_steps
-            optimizer = AdamW(optimizer_grouped_parameters, lr=self.param.learning_rate, eps=1e-8)
-            scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=num_warmup_steps,
-                                                        num_training_steps=num_train_optimization_steps)
+            optimizer = AdamW(
+                optimizer_grouped_parameters, lr=self.param.learning_rate, eps=1e-8
+            )
+            scheduler = get_linear_schedule_with_warmup(
+                optimizer,
+                num_warmup_steps=num_warmup_steps,
+                num_training_steps=num_train_optimization_steps,
+            )
 
             if self.param.fp16:
                 try:
                     from apex import amp
                 except ImportError:
                     raise ImportError(
-                        "Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
+                        "Please install apex from https://www.github.com/nvidia/apex to use fp16 training."
+                    )
 
-                bert_model, optimizer = amp.initialize(bert_model, optimizer, opt_level=self.param.fp16_opt_level)
+                bert_model, optimizer = amp.initialize(
+                    bert_model, optimizer, opt_level=self.param.fp16_opt_level
+                )
 
             if n_gpu > 1:
                 bert_model = torch.nn.DataParallel(bert_model)
@@ -421,10 +498,19 @@ class BertModelTrainer(object):
 
             train_sampler = RandomSampler(train_data)
 
-            collate_fn = get_collator(self.param.max_length, device, tokenizer, self.model_class)
+            collate_fn = get_collator(
+                self.param.max_length, device, tokenizer, self.model_class
+            )
 
-            train_dataloader = DataLoader(dataset=train_data, sampler=train_sampler, batch_size=self.param.batch_size,
-                                          shuffle=False, num_workers=0, collate_fn=collate_fn, drop_last=True)
+            train_dataloader = DataLoader(
+                dataset=train_data,
+                sampler=train_sampler,
+                batch_size=self.param.batch_size,
+                shuffle=False,
+                num_workers=0,
+                collate_fn=collate_fn,
+                drop_last=True,
+            )
             bert_model.train()
             for epoch in range(int(self.param.epochs)):
                 tr_loss = 0
@@ -439,7 +525,7 @@ class BertModelTrainer(object):
                     #     bert_model.train()
 
                     # define a new function to compute loss values for both output_modes
-                    loss = bert_model(*batch, mode='loss')
+                    loss = bert_model(*batch, mode="loss")
 
                     if n_gpu > 1:
                         loss = loss.mean()  # mean() to average on multi-gpu.
@@ -447,10 +533,14 @@ class BertModelTrainer(object):
                     if self.param.fp16:
                         with amp.scale_loss(loss, optimizer) as scaled_loss:
                             scaled_loss.backward()
-                        torch.nn.utils.clip_grad_norm_(amp.master_params(optimizer), self.param.max_grad_norm)
+                        torch.nn.utils.clip_grad_norm_(
+                            amp.master_params(optimizer), self.param.max_grad_norm
+                        )
                     else:
                         loss.backward()
-                        torch.nn.utils.clip_grad_norm_(bert_model.parameters(), self.param.max_grad_norm)
+                        torch.nn.utils.clip_grad_norm_(
+                            bert_model.parameters(), self.param.max_grad_norm
+                        )
 
                     tr_loss += loss.item()
                     optimizer.step()
@@ -459,15 +549,19 @@ class BertModelTrainer(object):
                     global_step += 1
 
                     steps.set_description(
-                        "Epoch {}/{}, Loss {:.7f}".format(epoch + 1, self.param.epochs,
-                                                          loss.item()))
+                        "Epoch {}/{}, Loss {:.7f}".format(
+                            epoch + 1, self.param.epochs, loss.item()
+                        )
+                    )
 
                 model = BertSimMatchModel(bert_model, tokenizer, config)
                 acc, loss = self.evaluate(model, test_data, test_label_list)
                 one_fold_acc_list.append(acc)
                 logger.info(
                     "Epoch {}, train Loss: {:.7f}, eval acc: {}, eval loss: {:.7f}".format(
-                        epoch + 1, tr_loss, acc, loss))
+                        epoch + 1, tr_loss, acc, loss
+                    )
+                )
                 bert_model.train()
             all_acc_list.append(one_fold_acc_list)
             model = BertSimMatchModel(bert_model, tokenizer, config)
@@ -478,12 +572,17 @@ class BertModelTrainer(object):
         all_epoch_acc = list(zip(*all_acc_list))
         logger.info("acc for each epoch:")
         for epoch, acc in enumerate(all_epoch_acc, start=1):
-            logger.info("epoch %d, mean: %.5f, std: %.5f" % (epoch, float(np.mean(acc)), float(np.std(acc))))
+            logger.info(
+                "epoch %d, mean: %.5f, std: %.5f"
+                % (epoch, float(np.mean(acc)), float(np.std(acc)))
+            )
 
         logger.info("***** Training complete *****")
 
     @staticmethod
-    def evaluate(model: BertSimMatchModel, data: TripletTextDataset, real_label_list: List[str]):
+    def evaluate(
+        model: BertSimMatchModel, data: TripletTextDataset, real_label_list: List[str]
+    ):
         """
         评估模型，计算acc
 
@@ -494,22 +593,30 @@ class BertModelTrainer(object):
         """
         num_padding = 0
         if isinstance(model.model, torch.nn.DataParallel):
-            num_padding = model.predict_batch_size - len(data) % model.predict_batch_size
+            num_padding = (
+                model.predict_batch_size - len(data) % model.predict_batch_size
+            )
             if num_padding != 0:
-                padding_data = TripletTextDataset(text_a_list=[''] * num_padding,
-                                                  text_b_list=[''] * num_padding,
-                                                  text_c_list=[''] * num_padding)
+                padding_data = TripletTextDataset(
+                    text_a_list=[""] * num_padding,
+                    text_b_list=[""] * num_padding,
+                    text_c_list=[""] * num_padding,
+                )
                 data = data.__add__(padding_data)
 
         sampler = SequentialSampler(data)
-        collate_fn = get_collator(model.max_length, model.device, model.tokenizer, model.model_class)
-        dataloader = DataLoader(data, sampler=sampler, batch_size=8, collate_fn=collate_fn)
+        collate_fn = get_collator(
+            model.max_length, model.device, model.tokenizer, model.model_class
+        )
+        dataloader = DataLoader(
+            data, sampler=sampler, batch_size=8, collate_fn=collate_fn
+        )
 
         predict_result = []
         loss_sum = 0
         for batch in dataloader:
             with torch.no_grad():
-                output = model.model(*batch, mode='evaluate')
+                output = model.model(*batch, mode="evaluate")
                 loss = output[2].mean().cpu().item()
                 loss_sum += loss
                 predict_results = output[1].cpu().numpy()
@@ -517,7 +624,7 @@ class BertModelTrainer(object):
 
                 for i_sample, cata_index in enumerate(cata_indexes):
                     prob = predict_results[i_sample][cata_index]
-                    label = 'B' if cata_index == 0 else 'C'
+                    label = "B" if cata_index == 0 else "C"
                     predict_result.append((str(label), float(prob)))
 
         if num_padding != 0:
@@ -547,9 +654,11 @@ class InputFeatures(object):
         self.segment_ids = segment_ids
 
     def to_tensor(self, device) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        return torch.LongTensor(self.input_ids).to(device), \
-               torch.LongTensor(self.segment_ids).to(device), \
-               torch.LongTensor(self.input_mask).to(device)
+        return (
+            torch.LongTensor(self.input_ids).to(device),
+            torch.LongTensor(self.segment_ids).to(device),
+            torch.LongTensor(self.input_mask).to(device),
+        )
 
 
 class InputExample(object):
@@ -581,7 +690,7 @@ class InputExample(object):
             _truncate_seq_pair(tokens_a, tokens_b, max_seq_length - 3)
         else:
             if len(tokens_a) > max_seq_length - 2:
-                tokens_a = tokens_a[:(max_seq_length - 2)]
+                tokens_a = tokens_a[: (max_seq_length - 2)]
 
         # The convention in BERT is:
         # (a) For sequence pairs:
@@ -625,9 +734,15 @@ class InputExample(object):
 
         return input_ids, segment_ids, input_mask
 
-    def to_two_pair_feature(self, tokenizer, max_seq_length) -> Tuple[InputFeatures, InputFeatures]:
-        ab = self._text_pair_to_feature(self.text_a, self.text_b, tokenizer, max_seq_length)
-        ac = self._text_pair_to_feature(self.text_a, self.text_c, tokenizer, max_seq_length)
+    def to_two_pair_feature(
+        self, tokenizer, max_seq_length
+    ) -> Tuple[InputFeatures, InputFeatures]:
+        ab = self._text_pair_to_feature(
+            self.text_a, self.text_b, tokenizer, max_seq_length
+        )
+        ac = self._text_pair_to_feature(
+            self.text_a, self.text_c, tokenizer, max_seq_length
+        )
         ab, ac = InputFeatures(*ab), InputFeatures(*ac)
         return ab, ac
 

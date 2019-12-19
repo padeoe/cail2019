@@ -17,9 +17,9 @@ def get_score(ground_truth_path, output_path):
     return 1.0 * correct / cnt
 
 
-if __name__ == '__main__':
-    ground_truth_path = '/data/ground_truth.txt'
-    output_path = '/output/output.txt'
+if __name__ == "__main__":
+    ground_truth_path = "/data/ground_truth.txt"
+    output_path = "/output/output.txt"
     if len(sys.argv) == 3:
         ground_truth_path = sys.argv[1]
         output_path = sys.argv[2]

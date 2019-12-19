@@ -194,9 +194,9 @@ python judger.py $GROUND_TRUTH_FILE $PREDICT_OUTPUT_FILE
 
 运行后会输出模型准确率。
 
-### 使用Docker构建
+### 使用 Docker 构建
 参见 [docker](docker) 目录下的文档。
 
 ## 致谢
 
-感谢队友 [@raven4752](https://github.com/raven4752) 提出的大量idea以及对本项目的参与和贡献!
+感谢队友 [@raven4752](https://github.com/raven4752) 提出的大量 idea 以及对本项目的参与和贡献!
