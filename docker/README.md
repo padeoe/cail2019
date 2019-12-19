@@ -1,4 +1,5 @@
-# 开发环境搭建
+# 使用 Docker 搭建开发环境、训练模型、测试打包
+[![](https://img.shields.io/docker/cloud/automated/padeoe/cail)](https://hub.docker.com/repository/docker/padeoe/cail "Docker Cloud Automated build")
 
 ## Set up development environment
 This will help you build a simulation environment that is consistent with the online system  of the competition, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.
@@ -37,41 +38,7 @@ docker run \
 
 Now we can access ssh at `ssh -p 2229 root@localhost` and jupyter notebook at [http://localhost:2230](http://localhost:2230).
 
-The ssh password is cail by default, you can change it in [Dockerfile](docker/dev/Dockerfile)
-
-## Test and submission
-This container will test your model and compress the codes into zip format required by the organizer.
-
-**1.get `submit` image**
-
-pull image from dockerhub
-```bash
-docker pull padeoe/cail:submit
-```
-or build it by yourself
-```bash
-docker build \
-    -t cail:submit \
-    --build-arg apt_mirror="mirrors.aliyun.com" \
-    --build-arg pypi_mirror="https://mirrors.aliyun.com/pypi/simple" \
-    -f docker/submit/Dockerfile .
-```
-
-**2.run test and zip codes**
-
-```bash
-docker run \
-    --rm \
-    -it \
-    --runtime nvidia \
-    -e LOCAL_USER_ID=`id -u $USER` \
-    -e SUBMIT_FILES="main.py model.py model" \
-    -v "$PWD":/codes \
-    -v "$PWD/data/submit_zip":/output_zip \
-    padeoe/cail:submit
-```
-It will execute `main.py` and `judger.py` and output the the accuracy of evaluation.
-Finally, the compressed codes and models for submit will stored in `$PWD/data/submit_zip`.
+The ssh password is `cail` by default, you can change it in [Dockerfile](docker/dev/Dockerfile)
 
 ## Train models
 This container will perform model training and output model files.
@@ -128,3 +95,37 @@ docker run \
     padeoe/cail:train
 ```
 The model will be saved at `OUTPUT_MODELS_DIR`.
+
+## Test and submission
+This container will test your model and compress the codes into zip format required by the organizer.
+
+**1.get `submit` image**
+
+pull image from dockerhub
+```bash
+docker pull padeoe/cail:submit
+```
+or build it by yourself
+```bash
+docker build \
+    -t cail:submit \
+    --build-arg apt_mirror="mirrors.aliyun.com" \
+    --build-arg pypi_mirror="https://mirrors.aliyun.com/pypi/simple" \
+    -f docker/submit/Dockerfile .
+```
+
+**2.run test and zip codes**
+
+```bash
+docker run \
+    --rm \
+    -it \
+    --runtime nvidia \
+    -e LOCAL_USER_ID=`id -u $USER` \
+    -e SUBMIT_FILES="main.py model.py model" \
+    -v "$PWD":/codes \
+    -v "$PWD/data/submit_zip":/output_zip \
+    padeoe/cail:submit
+```
+It will execute `main.py` and `judger.py` and output the the accuracy of evaluation.
+Finally, the compressed codes and models for submit will stored in `$PWD/data/submit_zip`.
