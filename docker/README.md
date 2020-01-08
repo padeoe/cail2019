@@ -1,5 +1,5 @@
 # 使用 Docker 搭建开发环境、训练模型、测试打包
-[![](https://img.shields.io/docker/cloud/automated/padeoe/cail)](https://hub.docker.com/repository/docker/padeoe/cail "Docker Cloud Automated build")
+[![](https://img.shields.io/docker/cloud/automated/padeoe/cail)](https://hub.docker.com/r/padeoe/cail "Docker Cloud Automated build")
 
 ## Set up development environment
 This will help you build a simulation environment that is consistent with the online system  of the competition, and provide an environment that is easy to develop, including installing all dependencies and providing ssh acess and jupyter notebook.

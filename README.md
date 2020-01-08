@@ -97,7 +97,7 @@ Apex 安装参见[https://github.com/NVIDIA/apex#quick-start](https://github.com
 | i7-5930K（6核3.5GHz） | 12 |  35GB内存 | 24h  |
 
 可见 CPU 基本训练不动…… GPU 的话要显存要大约 15GB 才能用本项目的默认 batch size 跑起来。
-如果显存不足，可以尝试自行修改训练代做软 batch。
+如果显存不足，可以尝试自行修改训练代码做软 batch。
 
 ### 代码结构和数据集
 项目结构如下：
