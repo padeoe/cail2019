@@ -38,7 +38,7 @@ docker run \
 
 Now we can access ssh at `ssh -p 2229 root@localhost` and jupyter notebook at [http://localhost:2230](http://localhost:2230).
 
-The ssh password is `cail` by default, you can change it in [Dockerfile](docker/dev/Dockerfile)
+The ssh password is `cail` by default, you can change it in [Dockerfile](dev/Dockerfile)
 
 ## Train models
 This container will perform model training and output model files.
