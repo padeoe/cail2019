@@ -57,7 +57,7 @@ Pillow==6.0.0
 # pip==9.0.1
 prompt-toolkit==1.0.15
 protobuf==3.7.1
-psutil==5.6.2
+psutil==5.6.6
 pycrypto==2.6.1
 Pygments==2.2.0
 # pygobject==3.26.1
