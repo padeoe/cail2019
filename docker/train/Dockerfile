@@ -39,6 +39,7 @@ RUN pip install -r requirements.txt
 WORKDIR /tmp
 RUN git clone https://github.com/NVIDIA/apex && \
     cd apex && \
+    git checkout 96b017a8b40f137abb971c4555d61b2fcbb87648 && \
     pip install -v --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" .
 
 WORKDIR /cail
