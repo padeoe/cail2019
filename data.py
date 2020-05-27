@@ -3,11 +3,13 @@ import logging
 import os
 
 import random
+import sys
 from zipfile import ZipFile
 
 from transformers import cached_path
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 # 比赛各阶段数据集，CAIL2019-SCM-big 是第二阶段数据集
 DATASET_ARCHIVE_MAP = {
@@ -25,17 +27,26 @@ def download_data(dataset_name):
     url = DATASET_ARCHIVE_MAP[dataset_name]
     try:
         resolved_archive_file = cached_path(url)
+        logger.info("Dataset is ready!")
     except EnvironmentError:
         logger.error("Dataset Download failed!")
         return None
 
     data_dir = os.path.join("data/raw", dataset_name)
     with ZipFile(resolved_archive_file, "r") as zipObj:
-        data_file_name = list(filter(lambda f: f.endswith(".json"), zipObj.namelist()))[
-            0
-        ]
-        zipObj.extract(data_file_name, data_dir)
-        return os.path.join(data_dir, data_file_name)
+        """
+        更新：主办方更新了数据集下载链接里的文件内容（由一个data.json分为了train.json、dev.json、test.json三个文件），
+        其中的train.json为比赛第二阶段的5000条数据集，dev.json、test.json 在比赛中没有给出。
+        本项目仅取train.json使用，保持和比赛时一致的数据和环境。
+        """
+        # 通过文件大小筛选出第二阶段数据集
+        zipinfo_dataset_stage2 = max(
+            zipObj.infolist(), key=lambda zipinfo: zipinfo.compress_size
+        )
+        legacy_filename = "SCM_5k.json"
+        zipinfo_dataset_stage2.filename = legacy_filename
+        zipObj.extract(zipinfo_dataset_stage2, data_dir)
+        return os.path.join(data_dir, legacy_filename)
 
 
 def generate_fix_test_data(raw_input_file):
