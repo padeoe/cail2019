@@ -79,7 +79,7 @@
 - PyTorch 1.1.0+
 - [requirements.txt](requirements.txt)
 - Windows 和 Linux 均可
-- Nvidia Apex：可选，用于混合精度训练，将代码中 `fp16 = True` 修改为 `fp16 = False` 可不依赖 Apex。使用 apex 可以降低显存消耗并提速。
+- Nvidia Apex：可选，用于混合精度训练，将代码中 `fp16 = False` 修改为 `fp16 = True` 可开启 Apex。使用 apex 可以降低显存消耗并提速。
 Apex 安装参见[https://github.com/NVIDIA/apex#quick-start](https://github.com/NVIDIA/apex#quick-start)。
 
 #### 硬件要求
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         "epochs": 2,
         "batch_size": 12,
         "learning_rate": 2e-5,
-        "fp16": True,
+        "fp16": False,
         'fp16_opt_level': 'O1',
         'max_grad_norm': 1.0,
         'warmup_steps': 0.1
@@ -161,13 +161,16 @@ if __name__ == '__main__':
     trainer.train(MODEL_DIR, 1)
 ```
 
-确保其中 `BERT_PRETRAINED_MODEL` 为 pytorch 版本的 BERT 预训练模型的路径，其他参数默认无需修改，即可开始训练：
+确保修改其中 `BERT_PRETRAINED_MODEL` 为 pytorch 版本的 BERT 预训练模型的路径，其他参数默认无需修改，即可开始训练：
 ```bash
 python train.py
 ```
 
+如想快速训练，还可以将 `model.py` 中的 `use_augment=True` 修改为 `use_augment=False` 停用数据增广，
+时间缩短为 1/6，准确率性能如上文所述有所降低。
+
 运行过程中会打印每一个 epoch 的 loss 和 accuracy。修改 `trainer.train(MODEL_DIR, 1)` 
-的第二个参数 k 进行 k 折交叉验证并打印每一折的性能和平均性能。
+的第二个参数 k 进行 k 折交叉验证并打印每一折的性能和平均性能，k 为 1 则采用固定测试集验证。
 
 训练完毕后模型存储在 `model` 目录下。
 

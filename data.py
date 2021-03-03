@@ -80,17 +80,21 @@ def generate_fix_test_data(raw_input_file):
         label_output_file, encoding="utf-8", mode="w"
     ) as label_output:
         for line in test_lines:
+            item = json.loads(line, encoding="utf-8")
+            a, b, c, origin_label = (
+                item["A"],
+                item["B"],
+                item["C"],
+                item.get("label", "B"),
+            )
+
+            # 对测试数据随机调整BC顺序和label
             choice = int(random.getrandbits(1))
             label = "B" if choice == 0 else "C"
 
-            item = json.loads(line, encoding="utf-8")
-            a = item["A"]
-            b = item["B"]
-            c = item["C"]
-
             label_output.write(label)
             label_output.write("\n")
-            if label == "C":
+            if label != origin_label:
                 line = json.dumps({"A": a, "B": c, "C": b}, ensure_ascii=False).strip()
 
             test_input.write(line)

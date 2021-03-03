@@ -161,33 +161,47 @@ class TripletTextDataset(Dataset):
 
     @staticmethod
     def augment(df):
+        # 反对称增广
         df_cp1 = df.copy()
         df_cp1["B"] = df["C"]
         df_cp1["C"] = df["B"]
-        df_cp1["label"] = "C"
+        df_cp1["label"] = df_cp1["label"].apply(
+            lambda label: "C" if label == "B" else "B"
+        )
 
+        # 自反性增广
         df_cp2 = df.copy()
-        df_cp2["A"] = df["B"]
-        df_cp2["B"] = df["A"]
+        df_cp2["A"] = df["C"]
+        df_cp2["B"] = df["C"]
+        df_cp2["C"] = df["A"]
         df_cp2["label"] = "B"
 
+        # 自反性+反对称增广
         df_cp3 = df.copy()
-        df_cp3["A"] = df["B"]
-        df_cp3["B"] = df["C"]
-        df_cp3["C"] = df["A"]
+        df_cp3["A"] = df["C"]
+        df_cp3["B"] = df["A"]
+        df_cp3["C"] = df["C"]
         df_cp3["label"] = "C"
 
+        # 启发式增广
         df_cp4 = df.copy()
-        df_cp4["A"] = df["C"]
-        df_cp4["B"] = df["A"]
-        df_cp4["C"] = df["C"]
-        df_cp4["label"] = "C"
+        df_cp4 = df_cp4.apply(
+            lambda x: pd.Series((x["B"], x["A"], x["C"], "B"))
+            if x["label"] == "B"
+            else pd.Series((x["C"], x["A"], x["B"], "C")),
+            axis=1,
+            result_type="broadcast",
+        )
 
+        # 启发式+反对称增广
         df_cp5 = df.copy()
-        df_cp5["A"] = df["C"]
-        df_cp5["B"] = df["C"]
-        df_cp5["C"] = df["A"]
-        df_cp5["label"] = "B"
+        df_cp5 = df_cp5.apply(
+            lambda x: pd.Series((x["B"], x["C"], x["A"], "C"))
+            if x["label"] == "B"
+            else pd.Series((x["C"], x["B"], x["A"], "B")),
+            axis=1,
+            result_type="broadcast",
+        )
 
         df = pd.concat([df, df_cp1, df_cp2, df_cp3, df_cp4, df_cp5])
         df = df.drop_duplicates()
