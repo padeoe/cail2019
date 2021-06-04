@@ -188,7 +188,7 @@ class TripletTextDataset(Dataset):
         df_cp4 = df_cp4.apply(
             lambda x: pd.Series((x["B"], x["A"], x["C"], "B"))
             if x["label"] == "B"
-            else pd.Series((x["C"], x["A"], x["B"], "C")),
+            else pd.Series((x["C"], x["B"], x["A"], "C")),
             axis=1,
             result_type="broadcast",
         )
@@ -198,7 +198,7 @@ class TripletTextDataset(Dataset):
         df_cp5 = df_cp5.apply(
             lambda x: pd.Series((x["B"], x["C"], x["A"], "C"))
             if x["label"] == "B"
-            else pd.Series((x["C"], x["B"], x["A"], "B")),
+            else pd.Series((x["C"], x["A"], x["B"], "B")),
             axis=1,
             result_type="broadcast",
         )
